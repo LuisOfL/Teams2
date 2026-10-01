@@ -52,7 +52,7 @@ def main(page: ft.Page):
                                 ],
                                 spacing=2
                             ),
-                            bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
+                            bgcolor=ft.Colors.SURFACE_VARIANT,
                             padding=10,
                             border_radius=8
                         )
@@ -82,7 +82,7 @@ def main(page: ft.Page):
     # UI Layout
     sidebar = ft.Container(
         width=240,
-        bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
+        bgcolor=ft.Colors.GREY_900,
         padding=10,
         content=ft.Column(
             controls=[
@@ -121,19 +121,6 @@ def main(page: ft.Page):
         )
     )
 
-    page.add(
-        ft.Row(
-            controls=[sidebar, chat_area],
-            expand=True,
-            spacing=0
-        )
-    )
-
-    # Carga inicial
-    load_channels()
-    select_channel("general", "General")
-
-ft.app(target=main)
     page.add(
         ft.Row(
             controls=[sidebar, chat_area],
