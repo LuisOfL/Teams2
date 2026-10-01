@@ -27,7 +27,7 @@ def main(page: ft.Page):
                 for ch in channels:
                     channel_list.controls.append(
                         ft.ListTile(
-                            leading=ft.Icon(ft.icons.HASHTAG, size=18),
+                            leading=ft.Icon(ft.Icons.HASHTAG, size=18),
                             title=ft.Text(ch["name"]),
                             data=ch["id"],
                             on_click=lambda e: select_channel(e.control.data, e.control.title.value)
@@ -47,12 +47,12 @@ def main(page: ft.Page):
                         ft.Container(
                             content=ft.Column(
                                 controls=[
-                                    ft.Text(msg["user"], weight=ft.FontWeight.BOLD, size=12, color=ft.colors.BLUE_200),
+                                    ft.Text(msg["user"], weight=ft.FontWeight.BOLD, size=12, color=ft.Colors.BLUE_200),
                                     ft.Text(msg["content"], size=14)
                                 ],
                                 spacing=2
                             ),
-                            bgcolor=ft.colors.SURFACE_VARIANT,
+                            bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
                             padding=10,
                             border_radius=8
                         )
@@ -82,13 +82,13 @@ def main(page: ft.Page):
     # UI Layout
     sidebar = ft.Container(
         width=240,
-        bgcolor=ft.colors.BACKGROUND,
+        bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
         padding=10,
         content=ft.Column(
             controls=[
                 ft.Row(
                     controls=[
-                        ft.Icon(ft.icons.GROUPS, color=ft.colors.PRIMARY),
+                        ft.Icon(ft.Icons.GROUPS, color=ft.Colors.PRIMARY),
                         ft.Text("Canales", size=20, weight=ft.FontWeight.BOLD)
                     ]
                 ),
@@ -101,7 +101,7 @@ def main(page: ft.Page):
     chat_area = ft.Container(
         expand=True,
         padding=15,
-        bgcolor=ft.colors.SURFACE,
+        bgcolor=ft.Colors.SURFACE,
         content=ft.Column(
             controls=[
                 channel_title,
@@ -111,8 +111,8 @@ def main(page: ft.Page):
                     controls=[
                         msg_input,
                         ft.IconButton(
-                            icon=ft.icons.SEND,
-                            icon_color=ft.colors.PRIMARY,
+                            icon=ft.Icons.SEND,
+                            icon_color=ft.Colors.PRIMARY,
                             on_click=send_message
                         )
                     ]
@@ -121,6 +121,19 @@ def main(page: ft.Page):
         )
     )
 
+    page.add(
+        ft.Row(
+            controls=[sidebar, chat_area],
+            expand=True,
+            spacing=0
+        )
+    )
+
+    # Carga inicial
+    load_channels()
+    select_channel("general", "General")
+
+ft.app(target=main)
     page.add(
         ft.Row(
             controls=[sidebar, chat_area],
