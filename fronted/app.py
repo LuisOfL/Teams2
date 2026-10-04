@@ -1,136 +1,111 @@
 import flet as ft
-import requests
+import json
+import websockets
 
-API_URL = "http://127.0.0.1:8000"
+from components.left_nav import create_left_nav
+from components.sidebar import create_sidebar
+from views.chat_view import get_chat_view
+from views.call_view import get_call_view
 
-def main(page: ft.Page):
-    page.title = "Mini Teams"
+WS_URL = "ws://localhost:8000/ws/"
+
+async def main(page: ft.Page):
+    page.title = "Microsoft Teams - Flet & FastAPI"
     page.theme_mode = ft.ThemeMode.DARK
     page.padding = 0
+    # Actualizado para Flet 0.28+
+    page.window.width = 1150
+    page.window.height = 720
 
-    # Estado de la app
-    current_channel_id = "general"
-    current_user = "Luis"
+    user_name = ft.TextField(label="Tu Nombre", value="Usuario1", width=140, text_size=12)
+    chat_messages = ft.ListView(expand=True, spacing=10, auto_scroll=True)
+    
+    async def on_submit_chat(e):
+        await send_chat(e)
 
-    # Componentes UI
-    channel_list = ft.ListView(expand=True, spacing=5)
-    messages_list = ft.ListView(expand=True, spacing=10, auto_scroll=True)
-    msg_input = ft.TextField(hint_text="Escribe un mensaje...", expand=True, shift_enter=True)
-    channel_title = ft.Text("Selecciona un canal", size=18, weight=ft.FontWeight.BOLD)
+    new_message = ft.TextField(
+        hint_text="Escribe un mensaje en General...", 
+        expand=True, 
+        border_color=ft.Colors.GREY_700,
+        focused_border_color=ft.Colors.INDIGO_300,
+        on_submit=on_submit_chat
+    )
+    
+    websocket = None
+    content_area = ft.Column(expand=True, spacing=0)
 
-    def load_channels():
-        try:
-            res = requests.get(f"{API_URL}/channels")
-            if res.status_code == 200:
-                channel_list.controls.clear()
-                channels = res.json()
-                for ch in channels:
-                    channel_list.controls.append(
-                        ft.ListTile(
-                            leading=ft.Icon(ft.Icons.HASHTAG, size=18),
-                            title=ft.Text(ch["name"]),
-                            data=ch["id"],
-                            on_click=lambda e: select_channel(e.control.data, e.control.title.value)
-                        )
-                    )
-                page.update()
-        except Exception as ex:
-            print(f"Error cargando canales: {ex}")
-
-    def load_messages(channel_id):
-        try:
-            res = requests.get(f"{API_URL}/channels/{channel_id}/messages")
-            if res.status_code == 200:
-                messages_list.controls.clear()
-                for msg in res.json():
-                    messages_list.controls.append(
-                        ft.Container(
-                            content=ft.Column(
-                                controls=[
-                                    ft.Text(msg["user"], weight=ft.FontWeight.BOLD, size=12, color=ft.Colors.BLUE_200),
-                                    ft.Text(msg["content"], size=14)
-                                ],
-                                spacing=2
-                            ),
-                            bgcolor=ft.Colors.SURFACE_VARIANT,
-                            padding=10,
-                            border_radius=8
-                        )
-                    )
-                page.update()
-        except Exception as ex:
-            print(f"Error cargando mensajes: {ex}")
-
-    def select_channel(ch_id, ch_name):
-        nonlocal current_channel_id
-        current_channel_id = ch_id
-        channel_title.value = f"# {ch_name}"
-        load_messages(ch_id)
-
-    def send_message(e):
-        if not msg_input.value.strip():
+    # --- WEBSOCKET LISTENER ---
+    async def connect_ws(e):
+        nonlocal websocket
+        if not user_name.value:
             return
-        payload = {"user": current_user, "content": msg_input.value.strip()}
         try:
-            res = requests.post(f"{API_URL}/channels/{current_channel_id}/messages", json=payload)
-            if res.status_code == 200:
-                msg_input.value = ""
-                load_messages(current_channel_id)
-        except Exception as ex:
-            print(f"Error enviando mensaje: {ex}")
-
-    # UI Layout
-    sidebar = ft.Container(
-        width=240,
-        bgcolor=ft.Colors.GREY_900,
-        padding=10,
-        content=ft.Column(
-            controls=[
-                ft.Row(
-                    controls=[
-                        ft.Icon(ft.Icons.GROUPS, color=ft.Colors.PRIMARY),
-                        ft.Text("Canales", size=20, weight=ft.FontWeight.BOLD)
-                    ]
-                ),
-                ft.Divider(),
-                channel_list
-            ]
-        )
-    )
-
-    chat_area = ft.Container(
-        expand=True,
-        padding=15,
-        bgcolor=ft.Colors.SURFACE,
-        content=ft.Column(
-            controls=[
-                channel_title,
-                ft.Divider(),
-                messages_list,
-                ft.Row(
-                    controls=[
-                        msg_input,
-                        ft.IconButton(
-                            icon=ft.Icons.SEND,
-                            icon_color=ft.Colors.PRIMARY,
-                            on_click=send_message
+            uri = f"{WS_URL}{user_name.value}"
+            websocket = await websockets.connect(uri)
+            show_chat_view()
+            
+            async for message in websocket:
+                data = json.loads(message)
+                m_type = data.get("type", "chat")
+                sender = data.get("sender", "Anónimo")
+                
+                if m_type == "chat":
+                    chat_messages.controls.append(
+                        ft.Container(
+                            content=ft.Row([
+                                ft.CircleAvatar(content=ft.Text(sender[:2].upper()), bgcolor=ft.Colors.INDIGO_700, radius=18),
+                                ft.Column([
+                                    ft.Row([
+                                        ft.Text(sender, weight=ft.FontWeight.BOLD, size=12, color=ft.Colors.INDIGO_200),
+                                        ft.Text("Justo ahora", size=10, color=ft.Colors.GREY_500)
+                                    ], spacing=10),
+                                    ft.Text(data.get("text", ""), size=14, color=ft.Colors.WHITE70)
+                                ], spacing=2, expand=True)
+                            ], alignment=ft.MainAxisAlignment.START, vertical_alignment=ft.CrossAxisAlignment.START),
+                            padding=5
                         )
-                    ]
-                )
-            ]
-        )
-    )
+                    )
+                    page.update()
+                elif m_type == "notification":
+                    chat_messages.controls.append(
+                        ft.Text(f"⚙️ {data.get('text')}", size=11, italic=True, color=ft.Colors.AMBER_300)
+                    )
+                    page.update()
+        except Exception as ex:
+            print(f"Error en la conexión WebSocket: {ex}")
 
-    page.add(
-        ft.Row(
-            controls=[sidebar, chat_area],
-            expand=True,
-            spacing=0
-        )
-    )
+    async def send_chat(e):
+        if new_message.value.strip() and websocket:
+            msg = {"type": "chat", "text": new_message.value}
+            await websocket.send(json.dumps(msg))
+            new_message.value = ""
+            new_message.update()
 
-    # Carga inicial
-    load_channels()
-    select_channel("general", "General")
+    # --- CAMBIO DE VISTAS ---
+    def show_chat_view(e=None):
+        content_area.controls.clear()
+        content_area.controls.append(
+            get_chat_view(chat_messages, new_message, send_chat)
+        )
+        page.update()
+
+    def show_call_view(e=None):
+        content_area.controls.clear()
+        content_area.controls.append(
+            get_call_view(user_name.value or "Usuario", show_chat_view)
+        )
+        page.update()
+
+    # Ensamblaje de Componentes de Layout
+    left_nav = create_left_nav(show_chat_view, show_call_view)
+    side_panel = create_sidebar(user_name, connect_ws, show_chat_view, show_call_view)
+
+    main_layout = ft.Row([
+        left_nav,
+        side_panel,
+        content_area
+    ], expand=True, spacing=0)
+
+    page.add(main_layout)
 
 ft.app(target=main)

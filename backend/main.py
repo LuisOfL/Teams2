@@ -1,58 +1,30 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import List, Dict
-import uvicorn
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+import json
+from utils import ConnectionManager, format_notification
 
-app = FastAPI(title="Mini Teams API")
+app = FastAPI(title="Teams Clone Backend", version="1.0")
 
-# Schemas
-class Message(BaseModel):
-    user: str
-    content: str
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-class Channel(BaseModel):
-    id: str
-    name: str
+manager = ConnectionManager()
 
-class CreateMessageRequest(BaseModel):
-    user: str
-    content: str
-
-# Base de datos temporal en memoria
-channels_db: Dict[str, str] = {
-    "general": "General",
-    "proyectos": "Proyectos",
-    "anuncios": "Anuncios"
-}
-
-messages_db: Dict[str, List[Dict[str, str]]] = {
-    "general": [
-        {"user": "Alice", "content": "¡Hola a todos!"},
-        {"user": "Bob", "content": "Bienvenidos al canal general."}
-    ],
-    "proyectos": [
-        {"user": "Luis", "content": "La API ya está lista."}
-    ],
-    "anuncios": []
-}
-
-@app.get("/channels", response_model=List[Channel])
-def get_channels():
-    return [{"id": key, "name": val} for key, val in channels_db.items()]
-
-@app.get("/channels/{channel_id}/messages", response_model=List[Message])
-def get_messages(channel_id: str):
-    if channel_id not in messages_db:
-        raise HTTPException(status_code=404, detail="Canal no encontrado")
-    return messages_db[channel_id]
-
-@app.post("/channels/{channel_id}/messages", response_model=Message)
-def post_message(channel_id: str, payload: CreateMessageRequest):
-    if channel_id not in messages_db:
-        raise HTTPException(status_code=404, detail="Canal no encontrado")
-    new_msg = {"user": payload.user, "content": payload.content}
-    messages_db[channel_id].append(new_msg)
-    return new_msg
-
-if __name__ == "__main__":
-    uvicorn.run("backend:app", host="127.0.0.1", port=8000, reload=True)
+@app.websocket("/ws/{client_id}")
+async def websocket_endpoint(websocket: WebSocket, client_id: str):
+    await manager.connect(websocket)
+    await manager.broadcast(format_notification(client_id, joined=True))
+    try:
+        while True:
+            data = await websocket.receive_text()
+            message_data = json.loads(data)
+            message_data["sender"] = client_id
+            await manager.broadcast(json.dumps(message_data))
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        await manager.broadcast(format_notification(client_id, joined=False))
